@@ -114,12 +114,18 @@ def launch(name: str,
     gpu_name = instance_type.split('-')[1].replace('_', ' ')
     num_gpus = int(instance_type.split('-')[0].replace('x', ''))
 
-    # Build query dict for vastai-sdk >= 1.0 (replaces old query string format)
+    # Build query dict for vastai-sdk >= 1.0 (replaces old query string format).
+    # Region format from Vast catalog: "City, CC, CONTINENT" (e.g. ", CA, NA").
+    # Vast.ai geolocation field is "City, CC" — filter on country code (CC),
+    # which is the second-to-last comma-separated part of the SkyPilot region.
+    region_parts = [p.strip() for p in region.split(',')]
+    country_code = (region_parts[-2]
+                    if len(region_parts) >= 2 else region_parts[-1])
     query: Dict[str, Any] = {
         'rentable': {'eq': True},
         'rented': {'eq': False},
-        'geolocation': {'eq': region[-2:]},
-        f'disk_space': {'gte': disk_size},
+        'geolocation': {'icontains': country_code},
+        'disk_space': {'gte': disk_size},
         'num_gpus': {'eq': num_gpus},
         'gpu_name': {'eq': gpu_name},
         'cpu_ram': {'gte': cpu_ram},
