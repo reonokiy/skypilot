@@ -158,8 +158,14 @@ def launch(name: str,
     # Remove None values to avoid overriding defaults
     launch_params = {k: v for k, v in launch_params.items() if v is not None}
 
-    # Required skypilot parameters (direct/ssh removed: not in vastai-sdk >= 1.0)
+    # Required skypilot parameters.
+    # direct=True: enables direct port-forwarded SSH access on a mapped port.
+    # ssh=True: tells Vast.ai to set up the SSH daemon in the container.
+    # These are sent as extra JSON fields via the low-level API call in
+    # _create_instance_direct() below.
     launch_params['id'] = instance_touse['id']
+    launch_params['direct'] = True
+    launch_params['ssh'] = True
     # Use user's label if provided, otherwise use skypilot name
     if 'label' not in launch_params:
         launch_params['label'] = name
@@ -264,8 +270,39 @@ def launch(name: str,
         launch_params['extra'] = (f'{existing_extra} {port_flags}'.strip()
                                   if existing_extra else port_flags)
 
-    new_instance_contract = vast.vast().create_instance(**launch_params)
-    # new_contract is the integer instance ID
+    # The SDK's create_instance doesn't expose `direct` and `ssh` params, but
+    # the Vast.ai API still accepts them in the JSON body and they are required
+    # for direct SSH port forwarding. Use the low-level VastClient directly.
+    instance_id = launch_params.pop('id')
+    json_blob = {
+        'client_id': 'me',
+        'image': launch_params.pop('image', None),
+        'env': launch_params.pop('env', {}),
+        'price': launch_params.pop('price', None),
+        'disk': launch_params.pop('disk', 10),
+        'label': launch_params.pop('label', None),
+        'extra': launch_params.pop('extra', None),
+        'onstart': launch_params.pop('onstart_cmd', None),
+        'image_login': launch_params.pop('login', None),
+        'force': launch_params.pop('force', False),
+        'cancel_unavail': launch_params.pop('cancel_unavail', False),
+        'template_hash_id': launch_params.pop('template_hash', None),
+        'user': launch_params.pop('user', None),
+        'runtype': launch_params.pop('runtype', None),
+        # direct=True enables direct port-forwarded SSH access.
+        # ssh=True tells Vast.ai to configure the SSH daemon.
+        'direct': launch_params.pop('direct', True),
+        'ssh': launch_params.pop('ssh', True),
+    }
+    # Include any remaining fields (future-proofing)
+    json_blob.update(launch_params)
+    # Remove None values to keep the request clean
+    json_blob = {k: v for k, v in json_blob.items() if v is not None}
+
+    client = vast.vast().client
+    r = client.put(f'/asks/{instance_id}/', json_data=json_blob)
+    r.raise_for_status()
+    new_instance_contract = r.json()
     return str(new_instance_contract['new_contract'])
 
 
