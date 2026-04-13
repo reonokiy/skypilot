@@ -14,6 +14,23 @@ from sky.utils import ux_utils
 POLL_INTERVAL = 10
 
 logger = sky_logging.init_logger(__name__)
+
+
+def _get_ssh_port(instance_info: Dict[str, Any]) -> int:
+    """Extract SSH port from instance info.
+
+    vastai-sdk >= 1.0 exposes ssh_port as a top-level integer field.
+    Older SDK versions returned a nested ports dict (Docker port binding format).
+    This helper handles both formats.
+    """
+    # New SDK (>= 1.0): direct integer field
+    if instance_info.get('ssh_port') is not None:
+        return int(instance_info['ssh_port'])
+    # Old SDK / legacy format: {'22/tcp': [{'HostPort': '12345'}]}
+    ports = instance_info.get('ports') or {}
+    if '22/tcp' in ports:
+        return int(ports['22/tcp'][0]['HostPort'])
+    return 22  # fallback
 # a much more convenient method
 status_filter = lambda machine_dict, stat_list: {
     k: v for k, v in machine_dict.items() if v['status'] in stat_list
@@ -233,7 +250,7 @@ def get_cluster_info(
                 instance_id=instance_id,
                 internal_ip=instance_info['local_ipaddrs'].strip(),
                 external_ip=instance_info['public_ipaddr'],
-                ssh_port=instance_info['ports']['22/tcp'][0]['HostPort'],
+                ssh_port=_get_ssh_port(instance_info),
                 tags={},
             )
         ]

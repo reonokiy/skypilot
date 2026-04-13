@@ -228,7 +228,7 @@ cloud_dependencies: Dict[str, List[str]] = {
     'paperspace': [],  # No dependencies needed for paperspace
     'primeintellect': [],  # No dependencies needed for primeintellect
     'do': ['pydo>=0.3.0', 'azure-core>=1.24.0', 'azure-common'],
-    'vast': ['vastai-sdk>=0.1.12'],
+    'vast': ['vastai-sdk>=1.0.0'],
     'vsphere': [
         'pyvmomi==8.0.1.0.2',
         # vsphere-automation-sdk is also required, but it does not have
