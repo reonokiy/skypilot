@@ -115,16 +115,16 @@ def launch(name: str,
     num_gpus = int(instance_type.split('-')[0].replace('x', ''))
 
     # Build query dict for vastai-sdk >= 1.0 (replaces old query string format).
-    # Region format from Vast catalog: "City, CC, CONTINENT" (e.g. ", CA, NA").
-    # Vast.ai geolocation field is "City, CC" — filter on country code (CC),
-    # which is the second-to-last comma-separated part of the SkyPilot region.
+    # Region format from SkyPilot catalog: "City, CC, CONTINENT" (e.g. ", CA, NA").
+    # Vast.ai geolocation field stores "City, CC" — extract country code for
+    # client-side filtering (bundles API does not support substring operators).
     region_parts = [p.strip() for p in region.split(',')]
     country_code = (region_parts[-2]
-                    if len(region_parts) >= 2 else region_parts[-1])
+                    if len(region_parts) >= 2 else region_parts[-1]).upper()
+
     query: Dict[str, Any] = {
         'rentable': {'eq': True},
         'rented': {'eq': False},
-        'geolocation': {'icontains': country_code},
         'disk_space': {'gte': disk_size},
         'num_gpus': {'eq': num_gpus},
         'gpu_name': {'eq': gpu_name},
@@ -135,12 +135,21 @@ def launch(name: str,
         query['datacenter'] = {'eq': True}
         query['hosting_type'] = {'gte': 1}
 
-    instance_list = vast.vast().search_offers(query=query, no_default=True)
+    all_offers = vast.vast().search_offers(query=query, no_default=True)
 
-    if isinstance(instance_list, int) or len(instance_list) == 0:
-        raise RuntimeError('Failed to create instances, could not find an '
-                           'offer that satisfies the requirements '
-                           f'"{query}".')
+    if isinstance(all_offers, int) or len(all_offers) == 0:
+        raise RuntimeError('Failed to create instances, could not find any '
+                           f'offer matching GPU {gpu_name} x{num_gpus}.')
+
+    # Filter by geolocation client-side: Vast stores "City, CC"; match country.
+    instance_list = [
+        o for o in all_offers
+        if o.get('geolocation', '').upper().endswith(f', {country_code}')
+    ]
+    if not instance_list:
+        raise RuntimeError(
+            f'Failed to create instances, no offers in region {country_code} '
+            f'(tried {len(all_offers)} offers globally).')
 
     instance_touse = instance_list[0]
 
